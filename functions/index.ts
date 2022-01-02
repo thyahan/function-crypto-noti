@@ -6,14 +6,28 @@ import * as os from 'os';
 import * as fs from 'fs';
 import * as FormData from 'form-data';
 
-import {graphUrl, discordWebhook} from './config';
-import {IScreenshot} from './@types';
+import {graphUrl, discordWebhook, binanceAPI} from './config';
+import {IScreenshot, IBinanceAvgPriceResponse} from './@types';
 
 const SCHEDULE_EXPRESSION = '0 3,7,11,15,19,23 * * *';
 // const SCHEDULE_EXPRESSION = '*/1 * * * *';
 const TIME_ZONE = 'Asia/Bangkok';
-const DELAY_MINLISECOND = 25 * 1000;
+const DELAY_MINLISECOND = 45 * 1000;
 const TIME_OUT = 60 * 1000;
+
+function getDate(): string {
+  const [date, time] = new Date().toLocaleString('en-US', {timeZone: TIME_ZONE, hour12: false}).split(', ');
+  const mdy = date.split('/');
+
+  return `${mdy[1]}/${mdy[0]}/${mdy[2]} ${time}`;
+}
+
+async function getBTCPrice(): Promise<string> {
+  const url = `${binanceAPI}/avgPrice?symbol=BTCUSDT`;
+  const res: IBinanceAvgPriceResponse = await axios.get(url);
+
+  return parseFloat(res.data.price).toLocaleString('en-US', {maximumFractionDigits: 4});
+}
 
 async function screenshot({filename, delay}: IScreenshot) {
   console.log('start screenshot');
@@ -28,7 +42,7 @@ async function screenshot({filename, delay}: IScreenshot) {
   });
 
   await page.goto(graphUrl, {
-    waitUntil: 'networkidle2',
+    waitUntil: 'networkidle0',
     timeout: TIME_OUT,
   });
   await page.waitForTimeout(delay);
@@ -38,13 +52,14 @@ async function screenshot({filename, delay}: IScreenshot) {
 
 async function discordSendNoti(filename: string) {
   console.log('sending discord notification');
-  const date = new Date().toLocaleString('en-US', {timeZone: TIME_ZONE});
-
   const file = fs.createReadStream(filename);
 
   const formData = new FormData();
 
-  formData.append('content', 'btc 4hrs ' + date);
+  const price = await getBTCPrice();
+  const content = `**${price}**\n----------------\n${getDate()}`;
+
+  formData.append('content', content);
   formData.append('embeds', file);
 
   await axios.all(
